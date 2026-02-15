@@ -1,20 +1,44 @@
-import { useState } from 'react'
-import './App.css'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { AuthGuard } from './components/auth/AuthGuard'
+import { LoginPage } from './pages/LoginPage'
+import { SignupPage } from './pages/SignupPage'
+import { SearchPage } from './pages/SearchPage'
+import { SavedPage } from './pages/SavedPage'
+import { TrashPage } from './pages/TrashPage'
 
 function App() {
-  const [count, setCount] = useState(0)
-
   return (
-    <>
-      <div>
-        <h1>Vite + React</h1>
-        <div className="card">
-          <button onClick={() => setCount((count) => count + 1)}>
-            count is {count}
-          </button>
-        </div>
-      </div>
-    </>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+        <Route
+          path="/search"
+          element={
+            <AuthGuard>
+              <SearchPage />
+            </AuthGuard>
+          }
+        />
+        <Route
+          path="/saved"
+          element={
+            <AuthGuard>
+              <SavedPage />
+            </AuthGuard>
+          }
+        />
+        <Route
+          path="/trash"
+          element={
+            <AuthGuard>
+              <TrashPage />
+            </AuthGuard>
+          }
+        />
+        <Route path="/" element={<Navigate to="/search" replace />} />
+      </Routes>
+    </BrowserRouter>
   )
 }
 
