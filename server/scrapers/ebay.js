@@ -1,47 +1,83 @@
-import { v4 as uuidv4 } from 'uuid'
-import { ebayClient } from '../lib/ebayClient.js'
+import axios from 'axios'
 
-export async function scrapeEbay(query) {
-  try {
-    console.log('Searching eBay via API...')
+const SANDBOX_BASE = 'https://api.sandbox.ebay.com'
+const PRODUCTION_BASE = 'https://api.ebay.com'
 
-    const searchQuery = query + ' headlight'
-    const items = await ebayClient.searchItems(searchQuery)
+let cachedToken = null
+let tokenExpiresAt = 0
 
-    const listings = items.map(item => {
-      // Parse price
-      let priceCents = null
-      let priceText = 'Price not listed'
+function getBaseUrl() {
+  const isSandbox = (process.env.EBAY_APP_ID || '').includes('SBX')
+  return isSandbox ? SANDBOX_BASE : PRODUCTION_BASE
+}
 
-      if (item.price) {
-        const priceValue = parseFloat(item.price.value)
-        priceCents = Math.round(priceValue * 100)
-        priceText = `$${item.price.value} ${item.price.currency}`
-      }
-
-      // Get image URL
-      const imageUrl = item.image?.imageUrl || item.thumbnailImages?.[0]?.imageUrl || ''
-
-      return {
-        id: uuidv4(),
-        url: item.itemWebUrl || item.itemAffiliateWebUrl || '',
-        source: 'ebay',
-        title: item.title || 'Untitled',
-        description: item.shortDescription || null,
-        price_cents: priceCents,
-        price_text: priceText,
-        location: item.itemLocation?.city || item.itemLocation?.country || null,
-        seller_name: item.seller?.username || null,
-        seller_rating: item.seller?.feedbackPercentage || null,
-        image_urls: imageUrl ? [imageUrl] : []
-      }
-    })
-
-    console.log(`Found ${listings.length} eBay listings via API`)
-    return listings
-
-  } catch (error) {
-    console.error('eBay API error:', error.message)
-    return []
+async function getOAuthToken() {
+  if (cachedToken && Date.now() < tokenExpiresAt) {
+    return cachedToken
   }
+
+  const baseUrl = getBaseUrl()
+  const credentials = Buffer.from(
+    `${process.env.EBAY_APP_ID}:${process.env.EBAY_CERT_ID}`
+  ).toString('base64')
+
+  const { data } = await axios.post(
+    `${baseUrl}/identity/v1/oauth2/token`,
+    'grant_type=client_credentials&scope=https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope',
+    {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Authorization: `Basic ${credentials}`,
+      },
+    }
+  )
+
+  cachedToken = data.access_token
+  // Expire 5 minutes early to avoid edge cases
+  tokenExpiresAt = Date.now() + (data.expires_in - 300) * 1000
+  return cachedToken
+}
+
+export async function searchEbay(query) {
+  const token = await getOAuthToken()
+  const baseUrl = getBaseUrl()
+
+  const { data } = await axios.get(
+    `${baseUrl}/buy/browse/v1/item_summary/search`,
+    {
+      params: {
+        q: query,
+        limit: 25,
+        sort: 'newlyListed',
+      },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
+      },
+    }
+  )
+
+  if (!data.itemSummaries) return []
+
+  return data.itemSummaries.map((item) => ({
+    title: item.title,
+    price: item.price
+      ? `${item.price.currency} ${item.price.value}`
+      : null,
+    price_cents: item.price
+      ? Math.round(parseFloat(item.price.value) * 100)
+      : null,
+    link: item.itemWebUrl,
+    image: item.image?.imageUrl || null,
+    source: 'ebay',
+    external_id: item.itemId,
+    condition: item.condition || null,
+    listing_date: item.itemCreationDate || null,
+    location: item.itemLocation
+      ? [item.itemLocation.city, item.itemLocation.stateOrProvince]
+          .filter(Boolean)
+          .join(', ')
+      : null,
+    seller_name: item.seller?.username || null,
+  }))
 }

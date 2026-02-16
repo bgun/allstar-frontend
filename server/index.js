@@ -1,64 +1,88 @@
+import 'dotenv/config'
 import express from 'express'
-import cors from 'cors'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { scrapeEbay } from './scrapers/ebay.js'
-import { scrapeCraigslist } from './scrapers/craigslist.js'
+import { searchEbay } from './scrapers/ebay.js'
+import { searchCraigslist } from './scrapers/craigslist.js'
+import { storeListings } from './lib/supabase.js'
+import ebayDeletionRouter from './routes/ebay-deletion.js'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const app = express()
 const PORT = process.env.PORT || 3001
 
-app.use(cors())
+// Parse JSON for most routes, but the eBay deletion POST needs raw body
+// for signature verification. We use express.raw() specifically for that path.
+app.use('/api/ebay-deletion', express.raw({ type: 'application/json' }))
 app.use(express.json())
 
-// Serve static files from the React app in production
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../dist')))
-}
+// Health check
+app.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() })
+})
 
-// Search endpoint
-app.post('/api/search', async (req, res) => {
+// Search endpoint - searches eBay and Craigslist simultaneously
+app.get('/api/search', async (req, res) => {
+  const { q } = req.query
+  if (!q) return res.status(400).json({ error: 'Query parameter "q" is required' })
+
   try {
-    const { query } = req.body
-
-    if (!query) {
-      return res.status(400).json({ error: 'Search query is required' })
-    }
-
-    console.log(`Searching for: ${query}`)
-
-    // Run scrapers in parallel
-    const [ebayResults, craigslistResults] = await Promise.allSettled([
-      scrapeEbay(query),
-      scrapeCraigslist(query)
+    const [ebayResult, craigslistResult] = await Promise.allSettled([
+      searchEbay(q),
+      searchCraigslist(q),
     ])
 
-    // Combine results
-    const listings = []
+    const ebayResults =
+      ebayResult.status === 'fulfilled' ? ebayResult.value : []
+    const craigslistResults =
+      craigslistResult.status === 'fulfilled' ? craigslistResult.value : []
 
-    if (ebayResults.status === 'fulfilled') {
-      listings.push(...ebayResults.value)
-    } else {
-      console.error('eBay scraper error:', ebayResults.reason)
+    if (ebayResult.status === 'rejected') {
+      console.error('eBay search failed:', ebayResult.reason?.message)
+    }
+    if (craigslistResult.status === 'rejected') {
+      console.error('Craigslist search failed:', craigslistResult.reason?.message)
     }
 
-    if (craigslistResults.status === 'fulfilled') {
-      listings.push(...craigslistResults.value)
-    } else {
-      console.error('Craigslist scraper error:', craigslistResults.reason)
-    }
+    // Merge results, sorted by listing_date (newest first), undated at end
+    const allResults = [...ebayResults, ...craigslistResults].sort((a, b) => {
+      if (a.listing_date && b.listing_date) {
+        return new Date(b.listing_date) - new Date(a.listing_date)
+      }
+      if (a.listing_date) return -1
+      if (b.listing_date) return 1
+      return 0
+    })
 
-    res.json({ listings })
-  } catch (error) {
-    console.error('Search error:', error)
-    res.status(500).json({ error: 'Failed to perform search' })
+    // Store in database (fire-and-forget, don't block response)
+    storeListings(allResults).catch((err) =>
+      console.error('Failed to store listings:', err.message)
+    )
+
+    res.json({
+      results: allResults,
+      query: q,
+      sources: {
+        ebay: { count: ebayResults.length, status: ebayResult.status },
+        craigslist: { count: craigslistResults.length, status: craigslistResult.status },
+      },
+    })
+  } catch (err) {
+    console.error('Search error:', err.message)
+    res.status(500).json({ error: `Search failed: ${err.message}` })
   }
 })
 
+// eBay Marketplace Account Deletion notifications
+app.use('/api/ebay-deletion', ebayDeletionRouter)
 
-app.listen(PORT, () => {
+// Serve React frontend in production
+const distPath = path.join(__dirname, '..', 'dist')
+app.use(express.static(distPath))
+app.get('*', (_req, res) => {
+  res.sendFile(path.join(distPath, 'index.html'))
+})
+
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`)
 })

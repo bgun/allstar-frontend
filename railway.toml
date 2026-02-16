@@ -1,21 +1,8 @@
-# Railway deployment configuration
-
 [build]
 builder = "NIXPACKS"
-
-[build.nixpacksPlan]
-providers = ["node"]
+buildCommand = "npm run build"
 
 [deploy]
 startCommand = "npm start"
 restartPolicyType = "ON_FAILURE"
-restartPolicyMaxRetries = 10
-
-[build.nixpacksPlan.phases.setup]
-nixPkgs = ["nodejs_20"]
-
-[build.nixpacksPlan.phases.install]
-cmds = ["npm ci"]
-
-[build.nixpacksPlan.phases.build]
-cmds = ["npm run build"]
+restartPolicyMaxRetries = 5

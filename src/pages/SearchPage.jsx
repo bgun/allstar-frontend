@@ -1,202 +1,134 @@
 import { useState } from 'react'
-import { useAuth } from '../contexts/AuthContext'
-import { SearchBar } from '../components/search/SearchBar'
-import { ListingCard } from '../components/listings/ListingCard'
-import { supabase } from '../lib/supabaseClient'
 
-export function SearchPage() {
-  const { user, signOut } = useAuth()
+function timeAgo(dateStr) {
+  if (!dateStr) return null
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const minutes = Math.floor(diff / 60000)
+  if (minutes < 1) return 'Just now'
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days}d ago`
+  const months = Math.floor(days / 30)
+  return `${months}mo ago`
+}
+
+export default function SearchPage() {
   const [query, setQuery] = useState('')
-  const [listings, setListings] = useState([])
-  const [isLoading, setIsLoading] = useState(false)
-  const [hasSearched, setHasSearched] = useState(false)
+  const [results, setResults] = useState([])
+  const [sources, setSources] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
-  const handleSearch = async (searchQuery) => {
-    setIsLoading(true)
-    setQuery(searchQuery)
-    setHasSearched(true)
-
+  const handleSearch = async (e) => {
+    e.preventDefault()
+    if (!query.trim()) return
+    setLoading(true)
+    setError('')
+    setResults([])
+    setSources(null)
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || '/api/search'
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ query: searchQuery })
-      })
-
-      if (!response.ok) {
-        throw new Error('Search failed')
-      }
-
-      const data = await response.json()
-      setListings(data.listings)
-    } catch (error) {
-      console.error('Search error:', error)
-      alert('Failed to search. Make sure the server is running (npm run server)')
-      setListings([])
+      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Search failed')
+      setResults(data.results || [])
+      setSources(data.sources || null)
+    } catch (err) {
+      setError(err.message)
     } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const saveListingToDb = async (listing) => {
-    // First, ensure the listing exists in the database
-    const { error: listingError } = await supabase
-      .from('listings')
-      .upsert({
-        id: listing.id,
-        url: listing.url,
-        source: listing.source,
-        title: listing.title,
-        description: listing.description,
-        price_cents: listing.price_cents,
-        price_text: listing.price_text,
-        location: listing.location,
-        seller_name: listing.seller_name,
-        seller_rating: listing.seller_rating,
-        image_urls: listing.image_urls
-      }, {
-        onConflict: 'url'
-      })
-
-    if (listingError) throw listingError
-  }
-
-  const handleThumbsUp = async (listing) => {
-    try {
-      // Save listing to database first
-      await saveListingToDb(listing)
-
-      // Then save the user action
-      const { error } = await supabase
-        .from('user_listing_actions')
-        .upsert({
-          user_id: user.id,
-          listing_id: listing.id,
-          action: 'thumbs_up',
-          updated_at: new Date().toISOString()
-        })
-
-      if (error) throw error
-
-      // Remove from current view
-      setListings(prev => prev.filter(l => l.id !== listing.id))
-    } catch (error) {
-      console.error('Error saving thumbs up:', error)
-      alert('Failed to save. Please try again.')
-    }
-  }
-
-  const handleThumbsDown = async (listing) => {
-    try {
-      // Save listing to database first
-      await saveListingToDb(listing)
-
-      // Then save the user action
-      const { error } = await supabase
-        .from('user_listing_actions')
-        .upsert({
-          user_id: user.id,
-          listing_id: listing.id,
-          action: 'thumbs_down',
-          updated_at: new Date().toISOString()
-        })
-
-      if (error) throw error
-
-      // Remove from current view
-      setListings(prev => prev.filter(l => l.id !== listing.id))
-    } catch (error) {
-      console.error('Error saving thumbs down:', error)
-      alert('Failed to save. Please try again.')
+      setLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-gray-900">Allstar AI</h1>
-          <div className="flex items-center gap-4">
-            <a
-              href="/saved"
-              className="text-gray-600 hover:text-gray-900 font-medium"
-            >
-              Saved
-            </a>
-            <a
-              href="/trash"
-              className="text-gray-600 hover:text-gray-900 font-medium"
-            >
-              Trash
-            </a>
-            <span className="text-gray-600">{user?.email}</span>
-            <button
-              onClick={signOut}
-              className="px-4 py-2 text-gray-600 hover:text-gray-900 font-medium"
-            >
-              Sign Out
-            </button>
-          </div>
+    <div>
+      <h2 className="text-2xl font-bold mb-6">Search Listings</h2>
+      <form onSubmit={handleSearch} className="flex gap-3 mb-6">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search eBay and Craigslist..."
+          className="flex-1 px-4 py-2 border border-gray-300 rounded-md"
+        />
+        <button
+          type="submit"
+          disabled={loading}
+          className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 cursor-pointer"
+        >
+          {loading ? 'Searching...' : 'Search'}
+        </button>
+      </form>
+
+      {sources && (
+        <div className="flex gap-4 mb-6 text-sm text-gray-500">
+          <span>
+            eBay: {sources.ebay.count} results
+            {sources.ebay.status === 'rejected' && ' (failed)'}
+          </span>
+          <span>
+            Craigslist: {sources.craigslist.count} results
+            {sources.craigslist.status === 'rejected' && ' (failed)'}
+          </span>
         </div>
-      </header>
+      )}
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        {/* Search Bar */}
-        <div className="mb-8">
-          <SearchBar onSearch={handleSearch} isLoading={isLoading} />
-        </div>
+      {error && <p className="text-red-600 mb-4">{error}</p>}
 
-        {/* Search Results */}
-        {isLoading && (
-          <div className="text-center py-12">
-            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-            <p className="mt-4 text-gray-600">Searching for headlights...</p>
-          </div>
-        )}
-
-        {!isLoading && hasSearched && listings.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-xl text-gray-600">No listings found for "{query}"</p>
-            <p className="text-gray-500 mt-2">Try a different search term</p>
-          </div>
-        )}
-
-        {!isLoading && listings.length > 0 && (
-          <>
-            <div className="mb-4">
-              <p className="text-gray-600">
-                Found {listings.length} listing{listings.length !== 1 ? 's' : ''} for "{query}"
-              </p>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {listings.map(listing => (
-                <ListingCard
-                  key={listing.id}
-                  listing={listing}
-                  onThumbsUp={handleThumbsUp}
-                  onThumbsDown={handleThumbsDown}
+      {results.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {results.map((item, i) => (
+            <div key={i} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm flex flex-col">
+              {item.image && (
+                <img
+                  src={item.image}
+                  alt={item.title}
+                  className="w-full h-48 object-cover rounded mb-3"
                 />
-              ))}
+              )}
+              <div className="flex items-center gap-2 mb-2">
+                <span
+                  className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                    item.source === 'ebay'
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'bg-purple-100 text-purple-700'
+                  }`}
+                >
+                  {item.source === 'ebay' ? 'eBay' : 'Craigslist'}
+                </span>
+                {item.listing_date && (
+                  <span className="text-xs text-gray-400">{timeAgo(item.listing_date)}</span>
+                )}
+                {item.condition && (
+                  <span className="text-xs text-gray-400">{item.condition}</span>
+                )}
+              </div>
+              <h3 className="font-semibold text-gray-900 mb-1 line-clamp-2">{item.title}</h3>
+              <div className="mt-auto pt-2 flex items-center justify-between">
+                {item.price && <p className="text-green-700 font-bold">{item.price}</p>}
+                {item.link && (
+                  <a
+                    href={item.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 text-sm hover:underline"
+                  >
+                    View listing
+                  </a>
+                )}
+              </div>
+              {item.location && (
+                <p className="text-xs text-gray-400 mt-1">{item.location}</p>
+              )}
             </div>
-          </>
-        )}
+          ))}
+        </div>
+      )}
 
-        {!hasSearched && (
-          <div className="text-center py-12">
-            <h2 className="text-2xl font-semibold text-gray-700 mb-2">
-              Search for Headlights
-            </h2>
-            <p className="text-gray-600">
-              Enter a vehicle make, model, and year to find headlight listings
-            </p>
-          </div>
-        )}
-      </main>
+      {!loading && results.length === 0 && !error && (
+        <p className="text-gray-500 text-center">Search for items across eBay and Craigslist to get started.</p>
+      )}
     </div>
   )
 }
