@@ -4,6 +4,7 @@ import Layout from './components/Layout'
 import LoginPage from './pages/LoginPage'
 import SignupPage from './pages/SignupPage'
 import SearchPage from './pages/SearchPage'
+import SettingsPage from './pages/SettingsPage'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -25,6 +26,16 @@ export default function App() {
               <ProtectedRoute>
                 <Layout>
                   <SearchPage />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <SettingsPage />
                 </Layout>
               </ProtectedRoute>
             }

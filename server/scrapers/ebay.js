@@ -3,6 +3,18 @@ import axios from 'axios'
 const SANDBOX_BASE = 'https://api.sandbox.ebay.com'
 const PRODUCTION_BASE = 'https://api.ebay.com'
 
+const DEFAULT_PREFERENCES = {
+  category_id: '33710',
+  condition_ids: ['3000', '7000'],
+  excluded_keywords: ['parting out', 'whole car', 'complete vehicle'],
+  buying_options: ['FIXED_PRICE', 'BEST_OFFER', 'AUCTION'],
+  vehicle_year: null,
+  vehicle_make: null,
+  vehicle_model: null,
+  sort: 'newlyListed',
+  max_price: null,
+}
+
 let cachedToken = null
 let tokenExpiresAt = 0
 
@@ -38,28 +50,83 @@ async function getOAuthToken() {
   return cachedToken
 }
 
-export async function searchEbay(query) {
+function buildFilterString(prefs) {
+  const filters = []
+
+  if (prefs.condition_ids?.length) {
+    filters.push(`conditionIds:{${prefs.condition_ids.join('|')}}`)
+  }
+
+  if (prefs.buying_options?.length) {
+    filters.push(`buyingOptions:{${prefs.buying_options.join('|')}}`)
+  }
+
+  if (prefs.max_price) {
+    filters.push(`price:[..${prefs.max_price}],priceCurrency:USD`)
+  }
+
+  return filters.length ? filters.join(',') : undefined
+}
+
+function buildQuery(baseQuery, prefs) {
+  let q = baseQuery
+  if (prefs.excluded_keywords?.length) {
+    const exclusions = prefs.excluded_keywords
+      .map((kw) => `-"${kw}"`)
+      .join(' ')
+    q = `${q} ${exclusions}`
+  }
+  return q
+}
+
+function buildCompatibilityFilter(prefs) {
+  const parts = []
+  if (prefs.vehicle_year) parts.push(`Year:${prefs.vehicle_year}`)
+  if (prefs.vehicle_make) parts.push(`Make:${prefs.vehicle_make}`)
+  if (prefs.vehicle_model) parts.push(`Model:${prefs.vehicle_model}`)
+  return parts.length ? parts.join(',') : undefined
+}
+
+export async function searchEbay(query, preferences = {}) {
+  const prefs = { ...DEFAULT_PREFERENCES, ...preferences }
   const token = await getOAuthToken()
   const baseUrl = getBaseUrl()
 
-  const { data } = await axios.get(
-    `${baseUrl}/buy/browse/v1/item_summary/search`,
-    {
-      params: {
-        q: query,
-        limit: 25,
-        sort: 'newlyListed',
-      },
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
-      },
-    }
-  )
+  const params = {
+    q: buildQuery(query, prefs),
+    limit: 25,
+    sort: prefs.sort || 'newlyListed',
+  }
 
-  if (!data.itemSummaries) return []
+  if (prefs.category_id) {
+    params.category_ids = prefs.category_id
+  }
 
-  return data.itemSummaries.map((item) => ({
+  const filter = buildFilterString(prefs)
+  if (filter) {
+    params.filter = filter
+  }
+
+  const compatibility = buildCompatibilityFilter(prefs)
+  if (compatibility) {
+    params.compatibility_filter = compatibility
+  }
+
+  const url = `${baseUrl}/buy/browse/v1/item_summary/search`
+
+  const { data } = await axios.get(url, {
+    params,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
+    },
+  })
+
+  const constructedUrl = axios.getUri({ url, params })
+
+  if (!data.itemSummaries) return { items: [], url: constructedUrl }
+
+  const items = data.itemSummaries.map((item) => ({
     title: item.title,
     price: item.price
       ? `${item.price.currency} ${item.price.value}`
@@ -80,4 +147,6 @@ export async function searchEbay(query) {
       : null,
     seller_name: item.seller?.username || null,
   }))
+
+  return { items, url: constructedUrl }
 }

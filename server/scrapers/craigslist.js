@@ -72,7 +72,7 @@ export async function searchCraigslist(query, city = 'newyork') {
     }
   })
 
-  return results.slice(0, 25)
+  return { items: results.slice(0, 25), url }
 }
 
 function parsePriceCents(priceStr) {

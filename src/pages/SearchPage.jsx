@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useAuth } from '../contexts/AuthContext'
 
 function timeAgo(dateStr) {
   if (!dateStr) return null
@@ -15,6 +16,7 @@ function timeAgo(dateStr) {
 }
 
 export default function SearchPage() {
+  const { user } = useAuth()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState([])
   const [sources, setSources] = useState(null)
@@ -29,7 +31,9 @@ export default function SearchPage() {
     setResults([])
     setSources(null)
     try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`)
+      const params = new URLSearchParams({ q: query })
+      if (user?.id) params.set('user_id', user.id)
+      const res = await fetch(`/api/search?${params}`)
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Search failed')
       setResults(data.results || [])
