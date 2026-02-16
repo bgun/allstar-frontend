@@ -1,8 +1,19 @@
 import axios from 'axios'
 import * as cheerio from 'cheerio'
 
-export async function searchCraigslist(query, city = 'newyork') {
-  const url = `https://${city}.craigslist.org/search/sss?query=${encodeURIComponent(query)}`
+export async function searchCraigslist(query, opts = {}) {
+  const city = opts.city || 'denver'
+  const lat = opts.lat || 39.6654
+  const lon = opts.lon || -105.1062
+  const search_distance = opts.search_distance || 1000
+
+  const params = new URLSearchParams({
+    query,
+    lat: String(lat),
+    lon: String(lon),
+    search_distance: String(search_distance),
+  })
+  const url = `https://${city}.craigslist.org/search/${city}-co/pta?${params}`
 
   const { data } = await axios.get(url, {
     headers: {

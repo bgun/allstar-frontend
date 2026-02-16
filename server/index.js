@@ -47,7 +47,12 @@ app.get('/api/search', async (req, res) => {
 
     const [ebayResult, craigslistResult] = await Promise.allSettled([
       searchEbay(q, prefs),
-      searchCraigslist(q, prefs.craigslist_city || 'newyork'),
+      searchCraigslist(q, {
+        city: prefs.craigslist_city || 'denver',
+        lat: prefs.craigslist_lat,
+        lon: prefs.craigslist_lon,
+        search_distance: prefs.craigslist_distance,
+      }),
     ])
 
     const ebayData =

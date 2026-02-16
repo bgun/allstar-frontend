@@ -19,12 +19,6 @@ export default function Layout({ children }) {
                 >
                   Search
                 </Link>
-                <Link
-                  to="/settings"
-                  className={`text-sm ${location.pathname === '/settings' ? 'text-blue-600 font-medium' : 'text-gray-600 hover:text-gray-900'}`}
-                >
-                  Settings
-                </Link>
               </div>
             </div>
             <div className="flex items-center gap-4">
