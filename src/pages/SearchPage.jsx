@@ -4,34 +4,22 @@ import { supabase } from '../lib/supabase'
 
 const DEFAULT_PREFERENCES = {
   category_id: '33710',
-  condition_ids: ['3000', '7000'],
+  condition_ids: ['3000'],
   excluded_keywords: ['parting out', 'whole car', 'complete vehicle'],
   buying_options: ['FIXED_PRICE', 'BEST_OFFER', 'AUCTION'],
   vehicle_year: '',
   vehicle_make: '',
   vehicle_model: '',
   sort: 'newlyListed',
-  max_price: '',
+  max_price: '500',
+  brand_type_oem: true,
+  origin_us: true,
   craigslist_enabled: true,
   craigslist_city: 'denver',
   craigslist_lat: '39.6654',
   craigslist_lon: '-105.1062',
   craigslist_distance: '1000',
 }
-
-const CATEGORIES = [
-  { id: '33710', label: 'Headlight Assemblies' },
-  { id: '33717', label: 'Tail Lights' },
-  { id: '33713', label: 'Fog Lights' },
-  { id: '33709', label: 'Headlight & Tail Light Covers' },
-  { id: '', label: 'All Categories' },
-]
-
-const CONDITIONS = [
-  { id: '3000', label: 'Used' },
-  { id: '7000', label: 'Parts' },
-  { id: '2500', label: 'Refurb' },
-]
 
 const SORT_OPTIONS = [
   { value: 'newlyListed', label: 'Newest' },
@@ -79,6 +67,7 @@ export default function SearchPage() {
   const [prefsLoaded, setPrefsLoaded] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(true)
+  const [debugOpen, setDebugOpen] = useState(false)
   const historyRef = useRef(null)
   const inputRef = useRef(null)
 
@@ -108,16 +97,6 @@ export default function SearchPage() {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
-
-  const handleCheckbox = (field, value) => {
-    setPrefs((prev) => {
-      const arr = prev[field] || []
-      return {
-        ...prev,
-        [field]: arr.includes(value) ? arr.filter((v) => v !== value) : [...arr, value],
-      }
-    })
-  }
 
   const savePrefs = async () => {
     if (!user) return
@@ -176,6 +155,7 @@ export default function SearchPage() {
   }
 
   const history = loadSearchHistory()
+  const clEnabled = prefs.craigslist_enabled !== false
 
   return (
     <div>
@@ -196,22 +176,39 @@ export default function SearchPage() {
       {/* Inline settings */}
       {settingsOpen && prefsLoaded && (
         <div className="bg-gray-50 border border-gray-200 rounded-md p-3 mb-4 space-y-2">
-          {/* Row 1: Category, Conditions, Sort */}
+          {/* Row 1: eBay filters + Sort */}
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500">Condition:</span>
-              {CONDITIONS.map((c) => (
-                <label key={c.id} className="flex items-center gap-1 text-xs">
-                  <input
-                    type="checkbox"
-                    checked={prefs.condition_ids?.includes(c.id) || false}
-                    onChange={() => handleCheckbox('condition_ids', c.id)}
-                    className="w-3 h-3"
-                  />
-                  {c.label}
-                </label>
-              ))}
-            </div>
+            <label className="flex items-center gap-1 text-xs text-gray-500">
+              <input
+                type="checkbox"
+                checked={prefs.brand_type_oem !== false}
+                onChange={(e) => setPrefs({ ...prefs, brand_type_oem: e.target.checked })}
+                className="w-3 h-3"
+              />
+              OEM Only
+            </label>
+
+            <label className="flex items-center gap-1 text-xs text-gray-500">
+              <input
+                type="checkbox"
+                checked={prefs.origin_us !== false}
+                onChange={(e) => setPrefs({ ...prefs, origin_us: e.target.checked })}
+                className="w-3 h-3"
+              />
+              US Origin
+            </label>
+
+            <label className="text-xs text-gray-500">
+              Max $
+              <input
+                type="number"
+                value={prefs.max_price || ''}
+                onChange={(e) => setPrefs({ ...prefs, max_price: e.target.value })}
+                placeholder="500"
+                min="0"
+                className="ml-1 w-16 text-xs px-1 py-0.5 border border-gray-300 rounded"
+              />
+            </label>
 
             <label className="text-xs text-gray-500">
               Sort
@@ -227,7 +224,7 @@ export default function SearchPage() {
             </label>
           </div>
 
-          {/* Row 2: Vehicle, CL City, Max Price */}
+          {/* Row 2: Vehicle, Craigslist, CL City, Radius */}
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-1">
               <span className="text-xs text-gray-500">Vehicle:</span>
@@ -257,26 +254,26 @@ export default function SearchPage() {
             <label className="flex items-center gap-1 text-xs text-gray-500">
               <input
                 type="checkbox"
-                checked={prefs.craigslist_enabled !== false}
+                checked={clEnabled}
                 onChange={(e) => setPrefs({ ...prefs, craigslist_enabled: e.target.checked })}
                 className="w-3 h-3"
               />
               Craigslist
             </label>
 
-            <label className={`text-xs ${prefs.craigslist_enabled !== false ? 'text-gray-500' : 'text-gray-300'}`}>
+            <label className={`text-xs ${clEnabled ? 'text-gray-500' : 'text-gray-300'}`}>
               CL City
               <input
                 type="text"
                 value={prefs.craigslist_city || ''}
                 onChange={(e) => setPrefs({ ...prefs, craigslist_city: e.target.value })}
                 placeholder="denver"
-                disabled={prefs.craigslist_enabled === false}
+                disabled={!clEnabled}
                 className="ml-1 w-20 text-xs px-1 py-0.5 border border-gray-300 rounded disabled:bg-gray-100 disabled:text-gray-300"
               />
             </label>
 
-            <label className={`text-xs ${prefs.craigslist_enabled !== false ? 'text-gray-500' : 'text-gray-300'}`}>
+            <label className={`text-xs ${clEnabled ? 'text-gray-500' : 'text-gray-300'}`}>
               Radius (mi)
               <input
                 type="number"
@@ -284,20 +281,8 @@ export default function SearchPage() {
                 onChange={(e) => setPrefs({ ...prefs, craigslist_distance: e.target.value })}
                 placeholder="1000"
                 min="0"
-                disabled={prefs.craigslist_enabled === false}
+                disabled={!clEnabled}
                 className="ml-1 w-16 text-xs px-1 py-0.5 border border-gray-300 rounded disabled:bg-gray-100 disabled:text-gray-300"
-              />
-            </label>
-
-            <label className="text-xs text-gray-500">
-              Max $
-              <input
-                type="number"
-                value={prefs.max_price || ''}
-                onChange={(e) => setPrefs({ ...prefs, max_price: e.target.value })}
-                placeholder="None"
-                min="0"
-                className="ml-1 w-16 text-xs px-1 py-0.5 border border-gray-300 rounded"
               />
             </label>
           </div>
@@ -411,6 +396,45 @@ export default function SearchPage() {
 
       {!loading && results.length === 0 && !error && (
         <p className="text-gray-500 text-center">Search for items across eBay and Craigslist to get started.</p>
+      )}
+
+      {/* Debug URL bubble - fixed bottom right */}
+      {sources && (
+        <div className="fixed bottom-4 right-4 z-50">
+          {debugOpen ? (
+            <div className="bg-white border border-gray-300 rounded-lg shadow-lg p-4 w-96 max-h-64 overflow-y-auto">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs font-semibold text-gray-700">Search URLs</span>
+                <button
+                  onClick={() => setDebugOpen(false)}
+                  className="text-gray-400 hover:text-gray-600 cursor-pointer text-sm"
+                >
+                  x
+                </button>
+              </div>
+              {sources.ebay?.url && (
+                <div className="mb-2">
+                  <span className="text-xs font-medium text-blue-600">eBay API:</span>
+                  <p className="text-xs text-gray-500 break-all mt-0.5">{sources.ebay.url}</p>
+                </div>
+              )}
+              {sources.craigslist?.url && (
+                <div>
+                  <span className="text-xs font-medium text-purple-600">Craigslist:</span>
+                  <p className="text-xs text-gray-500 break-all mt-0.5">{sources.craigslist.url}</p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={() => setDebugOpen(true)}
+              className="bg-gray-800 text-white text-xs px-3 py-2 rounded-full shadow-lg hover:bg-gray-700 cursor-pointer"
+              title="Show search URLs"
+            >
+              URLs
+            </button>
+          )}
+        </div>
       )}
     </div>
   )

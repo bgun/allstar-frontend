@@ -109,8 +109,8 @@ app.get('/api/search', async (req, res) => {
       results: filteredResults,
       query: q,
       sources: {
-        ebay: { count: ebayResults.length, status: ebayResult.status },
-        craigslist: { count: craigslistResults.length, status: craigslistResult.status },
+        ebay: { count: ebayResults.length, status: ebayResult.status, url: ebayData.url },
+        craigslist: { count: craigslistResults.length, status: craigslistResult.status, url: craigslistData.url },
       },
       ...(filtered && { filtered }),
     })

@@ -5,14 +5,16 @@ const PRODUCTION_BASE = 'https://api.ebay.com'
 
 const DEFAULT_PREFERENCES = {
   category_id: '33710',
-  condition_ids: ['3000', '7000'],
+  condition_ids: ['3000'],
   excluded_keywords: ['parting out', 'whole car', 'complete vehicle'],
   buying_options: ['FIXED_PRICE', 'BEST_OFFER', 'AUCTION'],
   vehicle_year: null,
   vehicle_make: null,
   vehicle_model: null,
   sort: 'newlyListed',
-  max_price: null,
+  max_price: '500',
+  brand_type_oem: true,
+  origin_us: true,
 }
 
 let cachedToken = null
@@ -87,6 +89,25 @@ function buildCompatibilityFilter(prefs) {
   return parts.length ? parts.join(',') : undefined
 }
 
+function buildAspectFilter(prefs) {
+  if (!prefs.category_id) return undefined
+  const aspects = []
+  if (prefs.brand_type_oem) {
+    aspects.push('Brand Type:{Genuine OEM}')
+  }
+  if (prefs.origin_us) {
+    aspects.push('Country/Region of Manufacture:{United States}')
+  }
+  if (!aspects.length) return undefined
+  return `categoryId:${prefs.category_id},${aspects.join(',')}`
+}
+
+function formatPriceUsd(priceObj) {
+  if (!priceObj?.value) return null
+  const dollars = Math.round(parseFloat(priceObj.value))
+  return `$${dollars}`
+}
+
 export async function searchEbay(query, preferences = {}) {
   const prefs = { ...DEFAULT_PREFERENCES, ...preferences }
   const token = await getOAuthToken()
@@ -112,6 +133,11 @@ export async function searchEbay(query, preferences = {}) {
     params.compatibility_filter = compatibility
   }
 
+  const aspectFilter = buildAspectFilter(prefs)
+  if (aspectFilter) {
+    params.aspect_filter = aspectFilter
+  }
+
   const url = `${baseUrl}/buy/browse/v1/item_summary/search`
 
   const { data } = await axios.get(url, {
@@ -128,9 +154,7 @@ export async function searchEbay(query, preferences = {}) {
 
   const items = data.itemSummaries.map((item) => ({
     title: item.title,
-    price: item.price
-      ? `${item.price.currency} ${item.price.value}`
-      : null,
+    price: formatPriceUsd(item.price),
     price_cents: item.price
       ? Math.round(parseFloat(item.price.value) * 100)
       : null,
