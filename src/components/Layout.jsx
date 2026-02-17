@@ -17,7 +17,13 @@ export default function Layout({ children }) {
                   to="/"
                   className={`text-sm ${location.pathname === '/' ? 'text-blue-600 font-medium' : 'text-gray-600 hover:text-gray-900'}`}
                 >
-                  Search
+                  Listings
+                </Link>
+                <Link
+                  to="/dashboard"
+                  className={`text-sm ${location.pathname === '/dashboard' ? 'text-blue-600 font-medium' : 'text-gray-600 hover:text-gray-900'}`}
+                >
+                  Dashboard
                 </Link>
               </div>
             </div>

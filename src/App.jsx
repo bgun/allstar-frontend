@@ -3,7 +3,8 @@ import { AuthProvider, useAuth } from './contexts/AuthContext'
 import Layout from './components/Layout'
 import LoginPage from './pages/LoginPage'
 import SignupPage from './pages/SignupPage'
-import SearchPage from './pages/SearchPage'
+import ListingsPage from './pages/ListingsPage'
+import DashboardPage from './pages/DashboardPage'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -24,7 +25,17 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <Layout>
-                  <SearchPage />
+                  <ListingsPage />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <DashboardPage />
                 </Layout>
               </ProtectedRoute>
             }
