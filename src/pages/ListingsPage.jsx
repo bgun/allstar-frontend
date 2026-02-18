@@ -283,12 +283,12 @@ export default function ListingsPage() {
   async function loadGradedListings() {
     setLoading(true)
 
-    // Get the most recent completed agent run
+    // Get the most recent agent run (running or completed)
     const { data: runs } = await supabase
       .from('agent_runs')
       .select('*')
-      .eq('status', 'completed')
-      .order('finished_at', { ascending: false })
+      .in('status', ['running', 'completed'])
+      .order('started_at', { ascending: false })
       .limit(1)
 
     const latestRun = runs?.[0]
