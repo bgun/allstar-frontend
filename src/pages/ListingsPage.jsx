@@ -331,6 +331,15 @@ export default function ListingsPage() {
         setGradeError(data.error || 'Failed to grade URL')
       } else {
         setGradeResult(data)
+        // Auto-star manually graded listings
+        if (data.listing_id) {
+          setFavorites((prev) => {
+            const next = new Set(prev)
+            next.add(data.listing_id)
+            saveFavorites(next)
+            return next
+          })
+        }
       }
     } catch (err) {
       setGradeError(err.message || 'Network error')
