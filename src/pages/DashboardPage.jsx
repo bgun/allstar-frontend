@@ -76,10 +76,52 @@ export default function DashboardPage() {
   const [events, setEvents] = useState([])
   const [runs, setRuns] = useState([])
   const [loading, setLoading] = useState(true)
+  const [agentStatus, setAgentStatus] = useState(null) // null=loading, 'online'|'offline'
+  const [agentRunning, setAgentRunning] = useState(false)
+  const [triggering, setTriggering] = useState(false)
   const eventsEndRef = useRef(null)
+
+  async function checkAgentHealth() {
+    try {
+      const res = await fetch('/api/agent/health')
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      setAgentStatus('online')
+      setAgentRunning(data.isRunning)
+    } catch {
+      setAgentStatus('offline')
+      setAgentRunning(false)
+    }
+  }
+
+  async function triggerAgent(dryRun) {
+    if (dryRun === false && !window.confirm('Start a full agent run? This will call the Anthropic API and use tokens.')) {
+      return
+    }
+    setTriggering(true)
+    try {
+      const res = await fetch(`/api/agent/trigger?dry_run=${dryRun}`, { method: 'POST' })
+      if (res.status === 409) {
+        alert('A run is already in progress.')
+      } else if (!res.ok) {
+        const data = await res.json()
+        alert(`Failed to trigger agent: ${data.error || res.statusText}`)
+      } else {
+        setAgentRunning(true)
+      }
+    } catch (err) {
+      alert(`Failed to reach agent: ${err.message}`)
+    } finally {
+      setTriggering(false)
+    }
+  }
 
   useEffect(() => {
     loadData()
+    checkAgentHealth()
+
+    // Poll agent health every 30s
+    const healthInterval = setInterval(checkAgentHealth, 30000)
 
     // Subscribe to realtime agent_events
     const channel = supabase
@@ -94,6 +136,7 @@ export default function DashboardPage() {
       .subscribe()
 
     return () => {
+      clearInterval(healthInterval)
       supabase.removeChannel(channel)
     }
   }, [])
@@ -127,7 +170,34 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <h2 className="text-2xl font-bold mb-6">Dashboard</h2>
+      <div className="flex items-center gap-4 mb-6">
+        <h2 className="text-2xl font-bold">Dashboard</h2>
+
+        <span className={`text-xs px-2 py-0.5 rounded-full ${
+          agentStatus === 'online' ? 'bg-green-100 text-green-700' :
+          agentStatus === 'offline' ? 'bg-red-100 text-red-700' :
+          'bg-gray-100 text-gray-500'
+        }`}>
+          {agentStatus === 'online' ? 'Agent Online' : agentStatus === 'offline' ? 'Agent Offline' : 'Checking...'}
+        </span>
+
+        <div className="ml-auto flex gap-2">
+          <button
+            onClick={() => triggerAgent(true)}
+            disabled={agentStatus !== 'online' || agentRunning || triggering}
+            className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Dry Run
+          </button>
+          <button
+            onClick={() => triggerAgent(false)}
+            disabled={agentStatus !== 'online' || agentRunning || triggering}
+            className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Run Agent
+          </button>
+        </div>
+      </div>
 
       {activeRun && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 flex items-center gap-3">

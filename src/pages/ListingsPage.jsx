@@ -300,10 +300,10 @@ export default function ListingsPage() {
                       href={listing.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-blue-600 text-xs hover:underline"
+                      className="inline-block bg-blue-600 text-white text-xs font-medium px-2.5 py-1 rounded hover:bg-blue-700"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      View
+                      Open on {listing.source === 'ebay' ? 'eBay' : 'Craigslist'}
                     </a>
                   )}
                 </div>

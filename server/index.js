@@ -44,6 +44,39 @@ app.put('/api/preferences/:userId', async (req, res) => {
   }
 })
 
+// Agent proxy endpoints
+const AGENT_URL = process.env.AGENT_URL // e.g. https://allstar-agent.up.railway.app
+const AGENT_API_TOKEN = process.env.AGENT_API_TOKEN || ''
+
+app.get('/api/agent/health', async (_req, res) => {
+  if (!AGENT_URL) return res.status(503).json({ error: 'AGENT_URL not configured' })
+  try {
+    const resp = await fetch(`${AGENT_URL}/health`)
+    const data = await resp.json()
+    res.json(data)
+  } catch (err) {
+    res.status(503).json({ error: 'Agent unreachable', detail: err.message })
+  }
+})
+
+app.post('/api/agent/trigger', async (req, res) => {
+  if (!AGENT_URL) return res.status(503).json({ error: 'AGENT_URL not configured' })
+  const dryRun = req.query.dry_run === 'true'
+  try {
+    const resp = await fetch(`${AGENT_URL}/trigger?dry_run=${dryRun}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${AGENT_API_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+    })
+    const data = await resp.json()
+    res.status(resp.status).json(data)
+  } catch (err) {
+    res.status(503).json({ error: 'Agent unreachable', detail: err.message })
+  }
+})
+
 // eBay Marketplace Account Deletion notifications
 app.use('/api/ebay-deletion', ebayDeletionRouter)
 
