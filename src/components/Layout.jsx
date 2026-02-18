@@ -20,6 +20,12 @@ export default function Layout({ children }) {
                   Listings
                 </Link>
                 <Link
+                  to="/my-listings"
+                  className={`text-sm ${location.pathname === '/my-listings' ? 'text-blue-600 font-medium' : 'text-gray-600 hover:text-gray-900'}`}
+                >
+                  My Listings
+                </Link>
+                <Link
                   to="/dashboard"
                   className={`text-sm ${location.pathname === '/dashboard' ? 'text-blue-600 font-medium' : 'text-gray-600 hover:text-gray-900'}`}
                 >

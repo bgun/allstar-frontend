@@ -5,6 +5,7 @@ import LoginPage from './pages/LoginPage'
 import SignupPage from './pages/SignupPage'
 import ListingsPage from './pages/ListingsPage'
 import DashboardPage from './pages/DashboardPage'
+import MyListingsPage from './pages/MyListingsPage'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -26,6 +27,16 @@ export default function App() {
               <ProtectedRoute>
                 <Layout>
                   <ListingsPage />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/my-listings"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <MyListingsPage />
                 </Layout>
               </ProtectedRoute>
             }

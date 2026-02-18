@@ -10,6 +10,21 @@ const GRADE_COLORS = {
   F: 'bg-red-500',
 }
 
+const FAVORITES_KEY = 'allstar_favorites'
+
+function loadFavorites() {
+  try {
+    const stored = localStorage.getItem(FAVORITES_KEY)
+    return stored ? new Set(JSON.parse(stored)) : new Set()
+  } catch {
+    return new Set()
+  }
+}
+
+function saveFavorites(favSet) {
+  localStorage.setItem(FAVORITES_KEY, JSON.stringify([...favSet]))
+}
+
 function timeAgo(dateStr) {
   if (!dateStr) return null
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -154,6 +169,95 @@ function FeedbackForm({ grade, listingTitle, onClose, onSubmit }) {
   )
 }
 
+function ManualEntryModal({ onClose, gradeUrl, setGradeUrl, grading, gradeResult, gradeError, onSubmit }) {
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-between items-start mb-4">
+          <h3 className="text-lg font-bold text-gray-900">Manual Entry</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 cursor-pointer text-xl leading-none">&times;</button>
+        </div>
+
+        <p className="text-sm text-gray-500 mb-4">Paste an eBay or Craigslist URL to scrape and grade a single listing.</p>
+
+        <form onSubmit={onSubmit} className="flex gap-2 mb-4">
+          <input
+            type="url"
+            value={gradeUrl}
+            onChange={(e) => setGradeUrl(e.target.value)}
+            placeholder="Paste an eBay or Craigslist URL..."
+            className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            disabled={grading}
+          />
+          <button
+            type="submit"
+            disabled={grading || !gradeUrl.trim()}
+            className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 cursor-pointer flex items-center gap-2"
+          >
+            {grading && (
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            )}
+            {grading ? 'Grading...' : 'Grade'}
+          </button>
+        </form>
+
+        {gradeError && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+            {gradeError}
+          </div>
+        )}
+
+        {gradeResult && (
+          <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+            <div className="flex items-start gap-4">
+              {gradeResult.image && (
+                <img
+                  src={gradeResult.image}
+                  alt={gradeResult.title}
+                  className="w-24 h-24 object-cover rounded"
+                />
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-3 mb-1">
+                  <GradeBadge grade={gradeResult.grade} score={gradeResult.score} />
+                  <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                    gradeResult.source === 'ebay' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
+                  }`}>
+                    {gradeResult.source === 'ebay' ? 'eBay' : 'CL'}
+                  </span>
+                  {gradeResult.price && <span className="text-sm font-bold text-green-700">{gradeResult.price}</span>}
+                </div>
+                <h3 className="text-sm font-semibold text-gray-900 mb-1">{gradeResult.title}</h3>
+                <p className="text-sm text-gray-600 mb-2">{gradeResult.rationale}</p>
+                {gradeResult.flags?.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mb-2">
+                    {gradeResult.flags.map((flag, i) => (
+                      <span key={i} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{flag}</span>
+                    ))}
+                  </div>
+                )}
+                {gradeResult.link && (
+                  <a
+                    href={gradeResult.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-blue-600 hover:underline"
+                  >
+                    View listing
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function ListingsPage() {
   const { user } = useAuth()
   const [listings, setListings] = useState([])
@@ -168,6 +272,9 @@ export default function ListingsPage() {
   const [gradeError, setGradeError] = useState(null)
   const [sortBy, setSortBy] = useState('score_desc')
   const [animating, setAnimating] = useState(false)
+  const [favorites, setFavorites] = useState(loadFavorites)
+  const [showManualEntry, setShowManualEntry] = useState(false)
+  const [filterText, setFilterText] = useState('')
 
   useEffect(() => {
     loadGradedListings()
@@ -247,6 +354,20 @@ export default function ListingsPage() {
     setSelectedListing(null)
   }
 
+  function toggleFavorite(listingId, e) {
+    e.stopPropagation()
+    setFavorites((prev) => {
+      const next = new Set(prev)
+      if (next.has(listingId)) {
+        next.delete(listingId)
+      } else {
+        next.add(listingId)
+      }
+      saveFavorites(next)
+      return next
+    })
+  }
+
   function changeSort(newSort) {
     if (newSort === sortBy) return
     setAnimating(true)
@@ -256,8 +377,14 @@ export default function ListingsPage() {
     }, 150)
   }
 
+  const filteredListings = useMemo(() => {
+    if (!filterText.trim()) return listings
+    const lower = filterText.toLowerCase()
+    return listings.filter((g) => g.listing?.title?.toLowerCase().includes(lower))
+  }, [listings, filterText])
+
   const sortedListings = useMemo(() => {
-    const sorted = [...listings]
+    const sorted = [...filteredListings]
     switch (sortBy) {
       case 'score_desc':
         return sorted.sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
@@ -282,7 +409,7 @@ export default function ListingsPage() {
       default:
         return sorted
     }
-  }, [listings, sortBy])
+  }, [filteredListings, sortBy])
 
   if (loading) {
     return <div className="text-center text-gray-500 py-12">Loading graded listings...</div>
@@ -290,88 +417,27 @@ export default function ListingsPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-2">
         <h2 className="text-2xl font-bold">Graded Listings</h2>
-        {runInfo && (
-          <div className="text-xs text-gray-500">
-            Last run: {timeAgo(runInfo.finished_at)} &middot; {runInfo.listings_graded} graded &middot; avg {Math.round(runInfo.average_score || 0)}
-          </div>
-        )}
+        <div className="flex items-center gap-3">
+          {runInfo && (
+            <div className="text-xs text-gray-500">
+              Last run: {timeAgo(runInfo.finished_at)} &middot; avg {Math.round(runInfo.average_score || 0)}
+            </div>
+          )}
+          <button
+            onClick={() => setShowManualEntry(true)}
+            className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer"
+          >
+            Manual Entry
+          </button>
+        </div>
       </div>
 
-      <form onSubmit={handleGradeUrl} className="mb-6 flex gap-2">
-        <input
-          type="url"
-          value={gradeUrl}
-          onChange={(e) => setGradeUrl(e.target.value)}
-          placeholder="Paste an eBay or Craigslist URL to grade..."
-          className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          disabled={grading}
-        />
-        <button
-          type="submit"
-          disabled={grading || !gradeUrl.trim()}
-          className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 cursor-pointer flex items-center gap-2"
-        >
-          {grading && (
-            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-          )}
-          {grading ? 'Grading...' : 'Grade'}
-        </button>
-      </form>
-
-      {gradeError && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-          {gradeError}
-        </div>
-      )}
-
-      {gradeResult && (
-        <div className="mb-6 p-4 bg-white border border-gray-200 rounded-lg shadow-sm">
-          <div className="flex items-start gap-4">
-            {gradeResult.image && (
-              <img
-                src={gradeResult.image}
-                alt={gradeResult.title}
-                className="w-24 h-24 object-cover rounded"
-              />
-            )}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-3 mb-1">
-                <GradeBadge grade={gradeResult.grade} score={gradeResult.score} />
-                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
-                  gradeResult.source === 'ebay' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
-                }`}>
-                  {gradeResult.source === 'ebay' ? 'eBay' : 'CL'}
-                </span>
-                {gradeResult.price && <span className="text-sm font-bold text-green-700">{gradeResult.price}</span>}
-              </div>
-              <h3 className="text-sm font-semibold text-gray-900 mb-1">{gradeResult.title}</h3>
-              <p className="text-sm text-gray-600 mb-2">{gradeResult.rationale}</p>
-              {gradeResult.flags?.length > 0 && (
-                <div className="flex flex-wrap gap-1 mb-2">
-                  {gradeResult.flags.map((flag, i) => (
-                    <span key={i} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{flag}</span>
-                  ))}
-                </div>
-              )}
-              {gradeResult.link && (
-                <a
-                  href={gradeResult.link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-blue-600 hover:underline"
-                >
-                  View listing
-                </a>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <p className="text-sm text-gray-500 mb-4">
+        {listings.length} graded listing{listings.length !== 1 ? 's' : ''}
+        {filterText.trim() && ` (${sortedListings.length} matching filter)`}
+      </p>
 
       {listings.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 mb-4">
@@ -396,6 +462,15 @@ export default function ListingsPage() {
               {opt.label}
             </button>
           ))}
+          <div className="ml-auto">
+            <input
+              type="text"
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
+              placeholder="Filter by title..."
+              className="px-3 py-1 text-xs border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent w-48"
+            />
+          </div>
         </div>
       )}
 
@@ -407,6 +482,7 @@ export default function ListingsPage() {
             const listing = gradeRow.listing
             if (!listing) return null
             const hasFeedback = feedbackSent.has(gradeRow.id)
+            const isFav = favorites.has(listing.id)
 
             return (
               <div
@@ -429,6 +505,15 @@ export default function ListingsPage() {
                       No image
                     </div>
                   )}
+                  <button
+                    onClick={(e) => toggleFavorite(listing.id, e)}
+                    className="absolute top-1 left-1 p-1 rounded-full bg-black/30 hover:bg-black/50 transition-colors cursor-pointer"
+                    title={isFav ? 'Remove from favorites' : 'Add to favorites'}
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill={isFav ? '#facc15' : 'none'} stroke={isFav ? '#facc15' : 'white'} strokeWidth="2">
+                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                    </svg>
+                  </button>
                   <div className="absolute top-1 right-1">
                     <GradeBadge grade={gradeRow.grade_letter} score={gradeRow.score} />
                   </div>
@@ -493,6 +578,18 @@ export default function ListingsPage() {
             setSelectedListing(null)
           }}
           onSubmit={handleFeedbackSubmit}
+        />
+      )}
+
+      {showManualEntry && (
+        <ManualEntryModal
+          onClose={() => setShowManualEntry(false)}
+          gradeUrl={gradeUrl}
+          setGradeUrl={setGradeUrl}
+          grading={grading}
+          gradeResult={gradeResult}
+          gradeError={gradeError}
+          onSubmit={handleGradeUrl}
         />
       )}
     </div>
