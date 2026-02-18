@@ -45,7 +45,7 @@ app.put('/api/preferences/:userId', async (req, res) => {
 })
 
 // Agent proxy endpoints
-const AGENT_URL = process.env.AGENT_URL // e.g. https://allstar-agent.up.railway.app
+const AGENT_URL = process.env.AGENT_URL // e.g. https://allstar-grading-agent-production.up.railway.app
 const AGENT_API_TOKEN = process.env.AGENT_API_TOKEN || ''
 
 app.get('/api/agent/health', async (_req, res) => {
