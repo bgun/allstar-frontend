@@ -69,6 +69,7 @@ app.post('/api/agent/trigger', async (req, res) => {
         'Authorization': `Bearer ${AGENT_API_TOKEN}`,
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify({ triggered_by: req.body?.triggered_by }),
     })
     const data = await resp.json()
     res.status(resp.status).json(data)
@@ -86,7 +87,20 @@ app.post('/api/agent/grade-url', async (req, res) => {
         'Authorization': `Bearer ${AGENT_API_TOKEN}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ url: req.body.url }),
+      body: JSON.stringify({ url: req.body.url, triggered_by: req.body?.triggered_by }),
+    })
+    const data = await resp.json()
+    res.status(resp.status).json(data)
+  } catch (err) {
+    res.status(503).json({ error: 'Agent unreachable', detail: err.message })
+  }
+})
+
+app.get('/api/agent/system-prompt', async (_req, res) => {
+  if (!AGENT_URL) return res.status(503).json({ error: 'AGENT_URL not configured' })
+  try {
+    const resp = await fetch(`${AGENT_URL}/system-prompt`, {
+      headers: { 'Authorization': `Bearer ${AGENT_API_TOKEN}` },
     })
     const data = await resp.json()
     res.status(resp.status).json(data)

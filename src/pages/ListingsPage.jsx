@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 
@@ -166,6 +166,8 @@ export default function ListingsPage() {
   const [grading, setGrading] = useState(false)
   const [gradeResult, setGradeResult] = useState(null)
   const [gradeError, setGradeError] = useState(null)
+  const [sortBy, setSortBy] = useState('score_desc')
+  const [animating, setAnimating] = useState(false)
 
   useEffect(() => {
     loadGradedListings()
@@ -215,7 +217,7 @@ export default function ListingsPage() {
       const resp = await fetch('/api/agent/grade-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: gradeUrl.trim() }),
+        body: JSON.stringify({ url: gradeUrl.trim(), triggered_by: user?.user_metadata?.full_name || user?.email || null }),
       })
       const data = await resp.json()
       if (!resp.ok) {
@@ -244,6 +246,43 @@ export default function ListingsPage() {
     setSelectedGrade(null)
     setSelectedListing(null)
   }
+
+  function changeSort(newSort) {
+    if (newSort === sortBy) return
+    setAnimating(true)
+    setTimeout(() => {
+      setSortBy(newSort)
+      setTimeout(() => setAnimating(false), 50)
+    }, 150)
+  }
+
+  const sortedListings = useMemo(() => {
+    const sorted = [...listings]
+    switch (sortBy) {
+      case 'score_desc':
+        return sorted.sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+      case 'score_asc':
+        return sorted.sort((a, b) => (a.score ?? 0) - (b.score ?? 0))
+      case 'date_desc':
+        return sorted.sort((a, b) => {
+          const da = a.listing?.listing_date || ''
+          const db = b.listing?.listing_date || ''
+          return db.localeCompare(da)
+        })
+      case 'date_asc':
+        return sorted.sort((a, b) => {
+          const da = a.listing?.listing_date || ''
+          const db = b.listing?.listing_date || ''
+          return da.localeCompare(db)
+        })
+      case 'price_desc':
+        return sorted.sort((a, b) => (b.listing?.price_cents ?? 0) - (a.listing?.price_cents ?? 0))
+      case 'price_asc':
+        return sorted.sort((a, b) => (a.listing?.price_cents ?? 0) - (b.listing?.price_cents ?? 0))
+      default:
+        return sorted
+    }
+  }, [listings, sortBy])
 
   if (loading) {
     return <div className="text-center text-gray-500 py-12">Loading graded listings...</div>
@@ -334,11 +373,37 @@ export default function ListingsPage() {
         </div>
       )}
 
+      {listings.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 mb-4">
+          <span className="text-xs text-gray-500 mr-1">Sort:</span>
+          {[
+            { key: 'score_desc', label: 'Grade High' },
+            { key: 'score_asc', label: 'Grade Low' },
+            { key: 'date_desc', label: 'Newest' },
+            { key: 'date_asc', label: 'Oldest' },
+            { key: 'price_desc', label: 'Price High' },
+            { key: 'price_asc', label: 'Price Low' },
+          ].map((opt) => (
+            <button
+              key={opt.key}
+              onClick={() => changeSort(opt.key)}
+              className={`px-2.5 py-1 text-xs rounded-full border cursor-pointer transition-colors ${
+                sortBy === opt.key
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {listings.length === 0 ? (
         <p className="text-gray-500 text-center py-12">No graded listings yet. The agent hasn't run or no listings have been graded.</p>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-          {listings.map((gradeRow) => {
+        <div className={`grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 transition-opacity duration-150 ${animating ? 'opacity-0' : 'opacity-100'}`}>
+          {sortedListings.map((gradeRow) => {
             const listing = gradeRow.listing
             if (!listing) return null
             const hasFeedback = feedbackSent.has(gradeRow.id)

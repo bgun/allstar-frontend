@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 
 const EVENT_EMOJI = {
@@ -50,8 +51,10 @@ function eventSummary(event) {
       return `Graded ${p.grade || ''} (${p.score ?? '?'}) - ${p.title ? p.title.slice(0, 40) : ''}`
     case 'grade_failed':
       return `Failed: ${p.error || p.title || 'unknown'}`
-    case 'run_completed':
-      return `Run complete: ${p.graded ?? '?'} graded, avg ${p.average_score ? Math.round(p.average_score) : '?'}`
+    case 'run_completed': {
+      const by = p.triggered_by ? ` by ${p.triggered_by}` : ' by Automated'
+      return `Run complete${by}: ${p.graded ?? p.listings_graded ?? '?'} graded, avg ${p.average_score ? Math.round(p.average_score) : '?'}`
+    }
     case 'run_failed':
       return `Run failed: ${p.error || 'unknown error'}`
     default:
@@ -73,13 +76,20 @@ function StatusBadge({ status }) {
 }
 
 export default function DashboardPage() {
+  const { user } = useAuth()
   const [events, setEvents] = useState([])
   const [runs, setRuns] = useState([])
   const [loading, setLoading] = useState(true)
   const [agentStatus, setAgentStatus] = useState(null) // null=loading, 'online'|'offline'
   const [agentRunning, setAgentRunning] = useState(false)
   const [triggering, setTriggering] = useState(false)
+  const [showPrompt, setShowPrompt] = useState(false)
+  const [systemPrompt, setSystemPrompt] = useState(null)
+  const [promptLoading, setPromptLoading] = useState(false)
+  const [pendingRun, setPendingRun] = useState(null) // null | { dryRun: boolean }
   const eventsEndRef = useRef(null)
+
+  const userName = user?.user_metadata?.full_name || user?.email || null
 
   async function checkAgentHealth() {
     try {
@@ -95,12 +105,13 @@ export default function DashboardPage() {
   }
 
   async function triggerAgent(dryRun) {
-    if (dryRun === false && !window.confirm('Start a full agent run? This will call the Anthropic API and use tokens.')) {
-      return
-    }
     setTriggering(true)
     try {
-      const res = await fetch(`/api/agent/trigger?dry_run=${dryRun}`, { method: 'POST' })
+      const res = await fetch(`/api/agent/trigger?dry_run=${dryRun}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ triggered_by: userName }),
+      })
       if (res.status === 409) {
         alert('A run is already in progress.')
       } else if (!res.ok) {
@@ -113,6 +124,21 @@ export default function DashboardPage() {
       alert(`Failed to reach agent: ${err.message}`)
     } finally {
       setTriggering(false)
+    }
+  }
+
+  async function fetchSystemPrompt() {
+    setPromptLoading(true)
+    try {
+      const res = await fetch('/api/agent/system-prompt')
+      if (!res.ok) throw new Error('Failed to fetch')
+      const data = await res.json()
+      setSystemPrompt(data)
+      setShowPrompt(true)
+    } catch {
+      alert('Failed to load system prompt')
+    } finally {
+      setPromptLoading(false)
     }
   }
 
@@ -183,16 +209,23 @@ export default function DashboardPage() {
 
         <div className="ml-auto flex gap-2">
           <button
-            onClick={() => triggerAgent(true)}
+            onClick={fetchSystemPrompt}
+            disabled={promptLoading}
+            className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
+          >
+            {promptLoading ? 'Loading...' : 'Show System Prompt'}
+          </button>
+          <button
+            onClick={() => setPendingRun({ dryRun: true })}
             disabled={agentStatus !== 'online' || agentRunning || triggering}
-            className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             Dry Run
           </button>
           <button
-            onClick={() => triggerAgent(false)}
+            onClick={() => setPendingRun({ dryRun: false })}
             disabled={agentStatus !== 'online' || agentRunning || triggering}
-            className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             Run Agent
           </button>
@@ -249,7 +282,9 @@ export default function DashboardPage() {
                   <div key={run.id} className="px-4 py-3">
                     <div className="flex items-center justify-between mb-1">
                       <StatusBadge status={run.status} />
-                      <span className="text-xs text-gray-400">{timeAgo(run.started_at)}</span>
+                      <span className="text-xs text-gray-400">
+                        {timeAgo(run.started_at)} by {run.triggered_by || 'Automated'}
+                      </span>
                     </div>
                     <div className="flex gap-4 text-xs text-gray-600">
                       <span>Scraped: {run.listings_scraped}</span>
@@ -271,6 +306,68 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {pendingRun && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setPendingRun(null)}>
+          <div className="bg-white rounded-xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-gray-900 mb-3">
+              {pendingRun.dryRun ? 'Start Dry Run?' : 'Start Full Agent Run?'}
+            </h3>
+            {pendingRun.dryRun ? (
+              <div className="text-sm text-gray-600 space-y-2 mb-5">
+                <p>A dry run will scrape listings from eBay and Craigslist and store them in the database, but <strong>will not call the AI grading API</strong>.</p>
+                <p>All listings will receive a placeholder grade of C/50. Use this to verify scraping is working without spending API tokens.</p>
+              </div>
+            ) : (
+              <div className="text-sm text-gray-600 space-y-2 mb-5">
+                <p>A full run will scrape listings from eBay and Craigslist, then <strong>grade every ungraded listing using the Anthropic API</strong>.</p>
+                <p>This will consume API tokens proportional to the number of new listings found. Grading typically takes 1-3 minutes depending on volume.</p>
+              </div>
+            )}
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setPendingRun(null)}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const { dryRun } = pendingRun
+                  setPendingRun(null)
+                  triggerAgent(dryRun)
+                }}
+                className={`px-4 py-2 text-sm text-white rounded-md cursor-pointer ${
+                  pendingRun.dryRun
+                    ? 'bg-gray-700 hover:bg-gray-800'
+                    : 'bg-blue-600 hover:bg-blue-700'
+                }`}
+              >
+                {pendingRun.dryRun ? 'Start Dry Run' : 'Start Full Run'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPrompt && systemPrompt && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPrompt(false)}>
+          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center px-6 py-4 border-b border-gray-200">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">System Prompt</h3>
+                {systemPrompt.version && (
+                  <span className="text-xs text-gray-500">Version: {systemPrompt.version}</span>
+                )}
+              </div>
+              <button onClick={() => setShowPrompt(false)} className="text-gray-400 hover:text-gray-600 cursor-pointer text-xl leading-none">&times;</button>
+            </div>
+            <div className="overflow-y-auto px-6 py-4">
+              <pre className="text-sm text-gray-800 whitespace-pre-wrap font-mono leading-relaxed">{systemPrompt.prompt}</pre>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

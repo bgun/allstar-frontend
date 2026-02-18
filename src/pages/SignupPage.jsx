@@ -4,6 +4,7 @@ import { Link, Navigate } from 'react-router-dom'
 
 export default function SignupPage() {
   const { user, signUp } = useAuth()
+  const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -17,7 +18,7 @@ export default function SignupPage() {
     setError('')
     setMessage('')
     setLoading(true)
-    const { error } = await signUp(email, password)
+    const { error } = await signUp(email, password, fullName)
     if (error) {
       setError(error.message)
     } else {
@@ -33,6 +34,14 @@ export default function SignupPage() {
         {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
         {message && <p className="text-green-600 text-sm mb-4">{message}</p>}
         <form onSubmit={handleSubmit} className="space-y-4">
+          <input
+            type="text"
+            placeholder="Full name"
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            required
+          />
           <input
             type="email"
             placeholder="Email"
